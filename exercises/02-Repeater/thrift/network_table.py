@@ -8,7 +8,7 @@ net.enableCli()
 
 # Network definition
 net.addP4Switch('s1')
-net.setP4Source('s1','repeater_with_table.p4')
+net.setP4Source('s1','repeater.p4')
 net.setP4CliInput('s1', 's1-commands.txt')
 net.addHost('h1')
 net.addHost('h2')

@@ -44,14 +44,37 @@ control MyIngress(inout headers hdr,
                   inout standard_metadata_t standard_metadata) {
 
     /* TODO 1: For solution 2 -> define a table that matches standard_metadata.ingress_port */
+    action forward(bit<9> egress_port){
+        standard_metadata.egress_spec = egress_port;
+    }
+
+    table repeater {
+        key = {
+            standard_metadata.ingress_port: exact;
+        }
+        actions = {
+            forward;
+            NoAction;
+        }
+        size = 2; // because we will have only 2 ports
+        default_action = NoAction;
+    }
+
     /* TODO 2: For solution 2 -> define an action that modifies the egress_port */
 
     apply {
 
         /* TODO 3:*/
         /* Solution 1: Without tables, write the algorithm directly here*/
+        // standard_metadata.egress_port = standard_metadata.ingress_port == 1 ? (bit<9>)2 : (bit<9>)1; 
+        // if (standard_metadata.ingress_port == 1){
+        //     standard_metadata.egress_spec = 2;
+        // }
+        // if (standard_metadata.ingress_port == 2){
+        //     standard_metadata.egress_spec = 1;
+        // }
         /* Solution 2: Apply the table you use */
-
+        repeater.apply();
     }
 }
 
