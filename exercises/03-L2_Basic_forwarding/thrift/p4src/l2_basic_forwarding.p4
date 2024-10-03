@@ -7,7 +7,20 @@
 *************************************************************************/
 
 //TODO 1: Define ethernet header, metadata and headers struct
+typedef bit<48> macAddr_t;
+header ethernet_t {
+    macAddr_t dstAddr;
+    macAddr_t srcAddr;
+    bit<16>   etherType;
+}
 
+struct metadata {
+    /* empty */
+}
+
+struct headers {
+    ethernet_t ethernet; 
+}
 
 /*************************************************************************
 *********************** P A R S E R  ***********************************
@@ -20,6 +33,7 @@ parser MyParser(packet_in packet,
 
     state start {
         //TODO 2: parse ethernet header
+        packet.extract(hdr.ethernet);
         transition accept;
     }
 }
@@ -43,16 +57,31 @@ control MyIngress(inout headers hdr,
                   inout standard_metadata_t standard_metadata) {
 
     action drop() {
-
         mark_to_drop(standard_metadata);
     }
 
     //TODO 4: define an action to set the egress port
+    action forward(bit<9> egress_port) {
+        standard_metadata.egress_spec = egress_port;
+    }
 
     //TODO 3: define a l2 forwarding table and define a match to set the egress port
-
+    table dmac {
+        key = {
+            hdr.ethernet.dstAddr: exact;
+        }
+        
+        actions = {
+            forward;
+            NoAction;
+        }
+        size = 256;
+        default_action = NoAction;
+    }
+    
     apply {
         //TODO 5: call the forwarding table
+        dmac.apply();
     }
 }
 
@@ -86,6 +115,7 @@ control MyComputeChecksum(inout headers hdr, inout metadata meta) {
 control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         //TODO 6: deparse ethernet header
+        packet.emit(hdr.ethernet);
     }
 }
 
