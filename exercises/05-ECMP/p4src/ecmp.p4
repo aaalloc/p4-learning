@@ -18,6 +18,7 @@ control MyVerifyChecksum(inout headers hdr, inout metadata meta) {
 **************  I N G R E S S   P R O C E S S I N G   *******************
 *************************************************************************/
 
+
 control MyIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
@@ -27,10 +28,28 @@ control MyIngress(inout headers hdr,
 
     action ecmp_group(bit<14> ecmp_group_id, bit<16> num_nhops){
         //TODO 6: define the ecmp_group action, here you need to hash the 5-tuple mod num_ports and safe it in metadata
+        hash(
+            meta.ecmp_hash,
+            HashAlgorithm.crc32,
+            (bit<1>)0,
+            { 
+                hdr.ipv4.srcAddr,
+                hdr.ipv4.dstAddr,
+                hdr.tcp.srcPort,
+                hdr.tcp.dstPort,
+                hdr.ipv4.protocol
+            },
+            num_nhops
+        );
+        meta.ecmp_group_id = ecmp_group;
     }
 
     action set_nhop(macAddr_t dstAddr, egressSpec_t port) {
         //TODO 5: Define the set_nhop action. You can copy it from the previous exercise, they are the same.
+        hdr.ethernet.srcAddr = hdr.ethernet.dstAddr; 
+        hdr.ethernet.dstAddr = dstAddr;
+        standard_metadata.egress_spec = port;
+        hdr.ipv4.ttl = hdr.ipv4 - 1;
     }
 
     table ecmp_group_to_nhop {
@@ -39,6 +58,17 @@ control MyIngress(inout headers hdr,
 
     table ipv4_lpm {
         //TODO 4: define the ip forwarding table
+        key = {
+            hdr.ipv4.dstAddr: exact;
+        }
+
+        action = {
+            set_nhop;
+            ecmp_group;
+            drop;
+        }
+        size = 256;
+        default_action = drop;
     }
 
     apply {
