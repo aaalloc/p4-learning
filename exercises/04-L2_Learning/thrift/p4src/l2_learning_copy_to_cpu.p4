@@ -20,14 +20,22 @@ header ethernet_t {
 }
 
 //TODO 2: define a new header type and name it `cpu_t`
+header cpu_t {
+    macAddr_t srcAddr;
+    bit<16> inputPort;
+}
+
 
 struct metadata {
     //TODO 3: define a metadata field to carry the ingress_port with the cloned packet
+    @field_list(0)
+    bit<16> ingressPort;
 }
 
 struct headers {
     ethernet_t   ethernet;
     //TODO 4: add cpu header to headers
+    cpu_t cpu;
 }
 
 
@@ -70,14 +78,73 @@ control MyIngress(inout headers hdr,
     }
 
     //TODO 7: Define the smac table and the mac_learn action
+    action mac_learn() {
+        meta.ingressPort = (bit<16>)standard_metadata.ingress_port;
+        // 0 is the field_list index assigned into
+        // metadata
+        clone_preserving_field_list(CloneType.I2E, 100, 0);
+    }
+
+    table smac {
+        key = {
+            hdr.ethernet.srcAddr: exact;
+        }
+
+        actions = {
+            mac_learn;
+            NoAction;
+        }
+        size = 256;
+        default_action = mac_learn;
+    }
 
     //TODO 5: Define the dmac table and forward action
+    action forward(bit<9> egress_port) {
+        // set output port
+        standard_metadata.egress_spec = egress_port;
+    }
+
+    table dmac {
+        key = {
+            hdr.ethernet.dstAddr: exact;
+        }
+
+        actions = {
+            forward;
+            NoAction;
+        }
+        size = 256;
+        default_action = NoAction;
+    }
+
 
     //TODO 6: Define the broadcast table and the set_mcast_grp action
+    action set_mcast_grp(bit<16> grp) {
+        standard_metadata.mcast_grp = grp;
+    }
+    
+    table broadcast {
+        key = {
+            standard_metadata.ingress_port: exact;
+        }
+
+        actions = {
+            set_mcast_grp;
+            NoAction;
+        }
+        size = 4;
+        default_action = NoAction;
+    }
+
 
     apply {
-
         // TODO 8: ingress logic, call the 3 tables
+        smac.apply();
+        if(dmac.apply().hit){
+
+        } else {
+            broadcast.apply();
+        }
     }
 }
 
@@ -92,7 +159,15 @@ control MyEgress(inout headers hdr,
     apply {
 
         //TODO 9: implement the egress logic: check if its a cloned packet, add cpu
-        // header and fill its fields. Finally set the ethernet type to L2_LEARN_ETHER_TYPE (defined above).
+        // header and fill its fields. 
+        // Finally set the ethernet type to 
+        // L2_LEARN_ETHER_TYPE (defined above).
+        if(standard_metadata.instance_type == 1) {
+            hdr.cpu.setValid();
+            hdr.cpu.srcAddr = hdr.ethernet.srcAddr;
+            hdr.cpu.inputPort = (bit<16>)meta.ingressPort;
+            hdr.ethernet.etherType = L2_LEARN_ETHER_TYPE;
+        }
     }
 }
 
@@ -115,6 +190,7 @@ control MyDeparser(packet_out packet, in headers hdr) {
         //parsed headers have to be added again into the packet.
         packet.emit(hdr.ethernet);
         //TODO 10: emit the cpu header
+        packet.emit(hdr.cpu);
     }
 }
 

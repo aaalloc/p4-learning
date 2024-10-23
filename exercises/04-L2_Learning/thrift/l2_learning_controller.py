@@ -7,7 +7,7 @@ from scapy.all import Ether, sniff, Packet, BitField, raw
 
 class CpuHeader(Packet):
     name = 'CpuPacket'
-    fields_desc = [BitField('macAddr',0,48), BitField('ingress_port', 0, 16)]
+    fields_desc = [BitField('macAddr', 0, 48), BitField('ingress_port', 0, 16)]
 
 
 class L2Controller(object):
@@ -16,7 +16,7 @@ class L2Controller(object):
         self.topo = load_topo('topology.json')
         self.sw_name = sw_name
         self.thrift_port = self.topo.get_thrift_port(sw_name)
-        self.cpu_port =  self.topo.get_cpu_port_index(self.sw_name)
+        self.cpu_port = self.topo.get_cpu_port_index(self.sw_name)
         self.controller = SimpleSwitchThriftAPI(self.thrift_port)
         self.init()
 
@@ -30,7 +30,8 @@ class L2Controller(object):
             self.controller.mirroring_add(100, self.cpu_port)
 
     def add_boadcast_groups(self):
-        interfaces_to_port = self.topo.get_node_intfs(fields=['port'])[self.sw_name].copy()
+        interfaces_to_port = self.topo.get_node_intfs(fields=['port'])[
+            self.sw_name].copy()
         # Filter lo and cpu port
         interfaces_to_port.pop('lo', None)
         interfaces_to_port.pop(self.topo.get_cpu_port_intf(self.sw_name), None)
@@ -39,31 +40,36 @@ class L2Controller(object):
         rid = 0
         for ingress_port in interfaces_to_port.values():
             port_list = list(interfaces_to_port.values())
-            del(port_list[port_list.index(ingress_port)])
-            #add multicast group
+            del (port_list[port_list.index(ingress_port)])
+            # add multicast group
             self.controller.mc_mgrp_create(mc_grp_id)
-            #add multicast node group
+            # add multicast node group
             handle = self.controller.mc_node_create(rid, port_list)
-            #associate with mc grp
+            # associate with mc grp
             self.controller.mc_node_associate(mc_grp_id, handle)
-            #fill broadcast table
-            self.controller.table_add("broadcast", "set_mcast_grp", [str(ingress_port)], [str(mc_grp_id)])
-            mc_grp_id +=1
-            rid +=1
+            # fill broadcast table
+            self.controller.table_add("broadcast", "set_mcast_grp", [
+                                      str(ingress_port)], [str(mc_grp_id)])
+            mc_grp_id += 1
+            rid += 1
 
     def learn(self, learning_data):
-        for mac_addr, ingress_port in  learning_data:
+        for mac_addr, ingress_port in learning_data:
             print("mac: %012X ingress_port: %s " % (mac_addr, ingress_port))
-            #TODO: Add an entry to smac
-            #TODO: Add an entry to dmac
-            #HINT: table_add(table_name, action_name, list of matches, list of action parameters)
+            # TODO: Add an entry to smac
+            self.controller.table_add("smac", "NoAction", [str(mac_addr)])
+            # TODO: Add an entry to dmac
+            self.controller.table_add("dmac", "forward",
+                                      [str(mac_addr)], [str(ingress_port)])
+            # HINT: table_add(table_name, action_name, list of matches, list of action parameters)
 
     def unpack_digest(self, msg, num_samples):
         digest = []
         starting_index = 32
         for sample in range(num_samples):
-            mac0, mac1, ingress_port = struct.unpack(">LHH", msg[starting_index:starting_index+8])
-            starting_index +=8
+            mac0, mac1, ingress_port = struct.unpack(
+                ">LHH", msg[starting_index:starting_index+8])
+            starting_index += 8
             mac_addr = (mac0 << 16) + mac1
             digest.append((mac_addr, ingress_port))
 
@@ -74,9 +80,9 @@ class L2Controller(object):
                                                                           msg[:32])
         digest = self.unpack_digest(msg, num)
         self.learn(digest)
-        #Acknowledge digest
-        self.controller.client.bm_learning_ack_buffer(ctx_id, list_id, buffer_id)
-
+        # Acknowledge digest
+        self.controller.client.bm_learning_ack_buffer(
+            ctx_id, list_id, buffer_id)
 
     def run_digest_loop(self):
         sub = nnpy.Socket(nnpy.AF_SP, nnpy.SUB)
@@ -94,7 +100,8 @@ class L2Controller(object):
             self.learn([(cpu_header.macAddr, cpu_header.ingress_port)])
 
     def run_cpu_port_loop(self):
-        cpu_port_intf = str(self.topo.get_cpu_port_intf(self.sw_name).replace("eth0", "eth1"))
+        cpu_port_intf = str(self.topo.get_cpu_port_intf(
+            self.sw_name).replace("eth0", "eth1"))
         sniff(iface=cpu_port_intf, prn=self.recv_msg_cpu)
 
 
