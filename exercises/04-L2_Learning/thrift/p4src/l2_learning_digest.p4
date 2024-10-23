@@ -20,10 +20,15 @@ header ethernet_t {
 }
 
 //TODO 2: define the learn_t struct that you will digest
+struct learn_t {
+    macAddr_t srcAddr;
+    bit<16> ingressPort;
+}
 
 struct metadata {
     /* empty */
     //TODO 3: delcare one learn_t variable
+    learn_t learn;
 }
 
 struct headers {
@@ -69,13 +74,74 @@ control MyIngress(inout headers hdr,
         mark_to_drop(standard_metadata);
     }
 
-    //TODO 4: copy the ingress code from the previous exercise. Modify the `mac_learn` action so now it digest the learn metadata
+    //TODO 4: copy the ingress code from the previous exercise. 
+    //TODO: Modify the `mac_learn` action so now it digest the learn metadata
     // struct you defined.
 
+    action mac_learn() {
+        meta.learn.srcAddr = hdr.ethernet.srcAddr;
+        meta.learn.ingressPort = (bit<16>)standard_metadata.ingress_port;
+        digest<learn_t>(1, meta.learn);
+    }
+
+    table smac {
+        key = {
+            hdr.ethernet.srcAddr: exact;
+        }
+
+        actions = {
+            mac_learn;
+            NoAction;
+        }
+        size = 256;
+        default_action = mac_learn;
+    }
+
+    action forward(bit<9> egress_port) {
+        // set output port
+        standard_metadata.egress_spec = egress_port;
+    }
+
+    table dmac {
+        key = {
+            hdr.ethernet.dstAddr: exact;
+        }
+
+        actions = {
+            forward;
+            NoAction;
+        }
+        size = 256;
+        default_action = NoAction;
+    }
+
+
+    action set_mcast_grp(bit<16> grp) {
+        standard_metadata.mcast_grp = grp;
+    }
+    
+    table broadcast {
+        key = {
+            standard_metadata.ingress_port: exact;
+        }
+
+        actions = {
+            set_mcast_grp;
+            NoAction;
+        }
+        size = 4;
+        default_action = NoAction;
+    }
+
+
     apply {
-
-        //TODO 5: copy the logic from the previous exercise
-
+        smac.apply();
+        if (dmac.apply().hit){
+            //
+        }
+        else {
+            broadcast.apply();
+        }
     }
 }
 
