@@ -41,7 +41,7 @@ control MyIngress(inout headers hdr,
             },
             num_nhops
         );
-        meta.ecmp_group_id = ecmp_group;
+        meta.ecmp_group_id = ecmp_group_id;
     }
 
     action set_nhop(macAddr_t dstAddr, egressSpec_t port) {
@@ -49,11 +49,22 @@ control MyIngress(inout headers hdr,
         hdr.ethernet.srcAddr = hdr.ethernet.dstAddr; 
         hdr.ethernet.dstAddr = dstAddr;
         standard_metadata.egress_spec = port;
-        hdr.ipv4.ttl = hdr.ipv4 - 1;
+        hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
     }
 
     table ecmp_group_to_nhop {
         //TODO 7: define the ecmp table, this table is only called when multiple hops are available
+        key = {
+            meta.ecmp_group_id: exact;
+            meta.ecmp_hash: exact;
+        }
+        actions = {
+            set_nhop;
+            drop;
+        }
+
+        size = 256;
+        default_action = drop;
     }
 
     table ipv4_lpm {
@@ -62,7 +73,7 @@ control MyIngress(inout headers hdr,
             hdr.ipv4.dstAddr: exact;
         }
 
-        action = {
+        actions = {
             set_nhop;
             ecmp_group;
             drop;
@@ -73,6 +84,22 @@ control MyIngress(inout headers hdr,
 
     apply {
         //TODO 8: implement the ingress logic: check validities, apply first table, and if needed the second table.
+
+        /*
+        1. Check if the ipv4 header was parsed (use isValid).
+        2. Apply the first table.
+        3. If the action ecmp_group was called during the first table apply. 
+        Call the second table. 
+        Note: to know which action was called during an apply you can use a switch statement and action_run
+        */
+        
+        if(hdr.ipv4.isValid()){
+            switch(ipv4_lpm.apply().action_run){
+                ecmp_group: {
+                    ecmp_group_to_nhop.apply();
+                }
+            }
+        }
     }
 }
 
